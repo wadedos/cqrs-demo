@@ -1,24 +1,24 @@
 use std::sync::Arc;
 
 use cqrs_es::Query;
-use postgres_es::{PostgresCqrs, PostgresViewRepository};
-use sqlx::{Pool, Postgres};
+use dynamo_es::{DynamoCqrs, DynamoViewRepository};
+use aws_sdk_dynamodb::Client;
 
 use crate::domain::aggregate::BankAccount;
 use crate::queries::{AccountQuery, BankAccountView, SimpleLoggingQuery};
 use crate::services::{BankAccountServices, HappyPathBankAccountServices};
 
 pub fn cqrs_framework(
-    pool: Pool<Postgres>,
+    dynamo_client: Client,
 ) -> (
-    Arc<PostgresCqrs<BankAccount>>,
-    Arc<PostgresViewRepository<BankAccountView, BankAccount>>,
+    Arc<DynamoCqrs<BankAccount>>,
+    Arc<DynamoViewRepository<BankAccountView, BankAccount>>,
 ) {
     // A very simple query that writes each event to stdout.
     let simple_query = SimpleLoggingQuery {};
 
     // A query that stores the current state of an individual account.
-    let account_view_repo = Arc::new(PostgresViewRepository::new("account_query", pool.clone()));
+    let account_view_repo = Arc::new(DynamoViewRepository::new("account_query", dynamo_client.clone()));
     let mut account_query = AccountQuery::new(account_view_repo.clone());
 
     // Without a query error handler there will be no indication if an
@@ -31,7 +31,7 @@ pub fn cqrs_framework(
         vec![Box::new(simple_query), Box::new(account_query)];
     let services = BankAccountServices::new(Box::new(HappyPathBankAccountServices));
     (
-        Arc::new(postgres_es::postgres_cqrs(pool, queries, services)),
+        Arc::new(dynamo_es::dynamodb_cqrs(dynamo_client, queries, services)),
         account_view_repo,
     )
 }
